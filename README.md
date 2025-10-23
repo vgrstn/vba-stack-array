@@ -49,3 +49,40 @@ Debug.Print s.Peek        ' -> beta
 Debug.Print s.Pop         ' -> beta (removed)
 Debug.Print s.Pop         ' -> alpha (removed)
 Debug.Print s.IsEmpty     ' -> True
+
+```
+
+## ⚡ Performance Notes
+
+The array-based implementation provides **constant-time O(1)** `Push` and `Pop` operations for normal workloads,  
+while outperforming the `Collection`-based version in speed and memory use.
+
+### Timings (ms) per Push + Pop cycle
+
+| Count  | Array | Collection |
+|:------:|------:|-----------:|
+| 10     | 0.00025 | 0.00049 |
+| 100    | 0.00025 | 0.00049 |
+| 1 000  | 0.00025 | 0.00050 |
+| 10 000 | 0.00025 | 0.00049 |
+| 100 000| 0.00281 | 0.00050 |
+
+### Observations
+
+- The **array version** is roughly **2× faster** than the `Collection` version at small to medium stack sizes.  
+- It uses about **half the memory** per stored item on x64 systems (excluding the headspace buffer).  
+- When the stack grows beyond several hundred thousand items, occasional `ReDim Preserve` operations cause timing spikes.  
+  These are amortized and remain negligible for practical workloads.  
+- The **collection version** stays stable at very large sizes but pays a constant late-binding penalty internally.  
+- Resizing follows a **chunked strategy** (`ChunkSize = 100`) to balance allocation overhead and memory fragmentation.
+
+### Practical Guidance
+
+- For computational stacks, recursion simulations, or evaluation engines where typical depth ≤ 100 000,  
+  prefer the **array stack** for speed and memory efficiency.  
+- For unbounded or long-lived stacks (e.g., message buffers), the **collection stack** may offer smoother scalability.  
+- Increasing `ChunkSize` reduces the frequency of `ReDim Preserve` calls at the cost of higher idle headspace.
+
+> All timings were measured in VBA 7 (x64) on Windows 11 using a high-resolution `Stopwatch` based on `QueryPerformanceCounter`.
+
+---

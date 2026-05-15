@@ -64,15 +64,15 @@ Option Explicit
 '
 ' Timings (ms) for one push + one pop.
 '     count      Array   Collection
-' 1      10    0.00029      0.00050
-' 2     100    0.00029      0.00051
-' 3    1000    0.00030      0.00050
-' 4   10000    0.00029      0.00050
-' 5  100000    0.00136      0.00050
+' 1      10    0.00030      0.00053
+' 2     100    0.00030      0.00053
+' 3    1000    0.00029      0.00052
+' 4   10000    0.00028      0.00052
+' 5  100000    0.00029      0.00052
 '
 ' The performance of the Array version is about 40% faster than the Collection
 ' version and it uses 50% less memory (for x64) per stored item, although extra
-' memory is needed for the headspace (ChunkSize).
+' memory is needed for the headspace (InitialSize).
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 ' Performance Notes
@@ -91,8 +91,15 @@ Private Enum VBERROR
     vbErrorInvalidProcedureCall = 5
 End Enum
 
-' ChunkSize is the size by which the dynamic array grows or shrinks.
-Private Const ChunkSize As Long = 100
+' InitialSize is the initial allocation size of the dynamic array.
+Private Const InitialSize As Long = 100
+
+' GrowthFactor is the multiplier applied on both grow and shrink.
+Private Const GrowthFactor As Double = 2
+
+' ShrinkTrigger is the occupancy fraction below which a shrink fires.
+' Must be < 1 / GrowthFactor to prevent thrashing on alternating push/pop.
+Private Const ShrinkTrigger As Double = 0.5 / GrowthFactor
 
 ' Wrapper for private data.
 Private Type TPRIVATE
@@ -109,9 +116,7 @@ Private this As TPRIVATE
 
 Private Sub Class_Initialize()
 
-    ReDim this.Stack(1 To ChunkSize)
-    this.Top = 0
-    Set this.List = Nothing
+    ReDim this.Stack(1 To InitialSize)
 
 End Sub
 
@@ -127,15 +132,10 @@ Public Property Get Enumerate() As IEnumVARIANT
 ' [_NewEnum] is the name of the hidden method to enumerate a VB Collection.
 ' The internal stack array is first copied to an intermediate VB Collection.
 '
-' Mutating Stack during the For Each loop does not break the enumeration but
-' will give unpredictable results. After a For Each loop completes, this.List
-' remains intact. VB does not expose a standard hook to detect when enumeration
-' has finished. To keep it simple, any Push or Pop will reset the enumerator.
-'
-' While the current enumerator remains valid, modifying the stack during
-' iteration may lead to unpredictable behavior. This reflects VB's native
-' semantics: altering a collection mid-enumeration can produce undefined or
-' erratic runtime results.
+' A snapshot Collection is built on each call and stored in this.List.
+' Push or Pop sets this.List = Nothing, but the enumerator holds its own
+' reference, so the snapshot survives until the For Each loop completes.
+' Mutation during iteration is therefore safe but iterates the old snapshot.
 
     Set this.List = New Collection
     Dim i As Long
@@ -150,8 +150,9 @@ End Property
 '@Description "Removes all items from the stack."
 Public Sub Clear()
 
-    ReDim this.Stack(1 To ChunkSize)
+    ReDim this.Stack(1 To InitialSize)
     this.Top = 0
+    Set this.List = Nothing
 
 End Sub
 
@@ -203,9 +204,11 @@ Public Function Pop() As Variant
 
     this.Top = this.Top - 1
 
-    ' Reclaim the headspace if it has become two chunks large.
-    If UBound(this.Stack) = this.Top + 2 * ChunkSize Then
-        ReDim Preserve this.Stack(1 To this.Top + ChunkSize)
+    ' Reclaim space.
+    If this.Top < ShrinkTrigger * UBound(this.Stack) Then
+        Dim newSize As Long: newSize = Int(UBound(this.Stack) / GrowthFactor)
+        If newSize < InitialSize Then newSize = InitialSize
+        ReDim Preserve this.Stack(1 To newSize)
     End If
 
     Set this.List = Nothing
@@ -217,8 +220,8 @@ End Function
 Public Sub Push(ByVal Item As Variant)
 
     ' Increase the headspace if there is none left.
-    If UBound(this.Stack) = this.Top Then
-        ReDim Preserve this.Stack(1 To this.Top + ChunkSize)
+    If this.Top = UBound(this.Stack) Then
+        ReDim Preserve this.Stack(1 To Int(GrowthFactor * this.Top))
     End If
 
     this.Top = this.Top + 1
@@ -234,14 +237,8 @@ Public Sub Push(ByVal Item As Variant)
 End Sub
 
 
-'@Description "Exports all stack items to an array."
+'@Description "Exports all stack items to an array with most recently pushed item as first array element."
 Public Function Items(Optional ByVal base As Long) As Variant()
-
-    If this.Top = 0 Then
-        ' Returns initialized empty array allowing For Each on object.Items.
-        Items = Array()
-        Exit Function
-    End If
 
     Dim arr() As Variant: ReDim arr(base To base + this.Top - 1)
     Dim j As Long: j = base

@@ -7,6 +7,15 @@
 A lightweight **LIFO stack** implemented on top of a dynamic **array** with doubling growth and lazy shrink.  
 Designed for **speed and memory efficiency** versus a `Collection`-backed stack, while preserving a clean API.
 
+## 📁 Files
+
+| File | Description |
+|---|---|
+| `Stack.cls` | Source file with [Rubberduck](https://rubberduckvba.com/) annotations (`'@Description`, `'@DefaultMember`, `'@Enumerator`) |
+| `Stack_WithAttributes.cls` | Ready-to-import version with VB attributes baked in — no Rubberduck required |
+
+Both files are identical in behaviour. Import `Stack_WithAttributes.cls` if you are not using Rubberduck.
+
 ---
 
 ## 📦 Features

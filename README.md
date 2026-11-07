@@ -22,7 +22,7 @@ Both files are identical in behaviour. Import `Stack_WithAttributes.cls` if you 
 
 - **Fast push/pop** using a dynamic **array** with exponential growth (`GrowthFactor = 2`)
 - **Lower memory use** than `Collection` (≈2× less per item on x64; extra headspace applies)
-- **Shrink logic**: reclaims capacity when occupancy drops below `ShrinkTrigger` (25%)
+- **Shrink logic**: reclaims capacity when occupancy drops below `ShrinkTrigger` (25%), never below `InitialSize`
 - **Enumeration**: `For Each` (top → bottom) via a snapshot `Collection`
 - **Utility export**: `Items([base])` returns a 0- or 1-based array copy
 - Pure VBA, no external references
@@ -39,7 +39,7 @@ Both files are identical in behaviour. Import `Stack_WithAttributes.cls` if you 
 | `Count`            | `Property` | Number of items currently stored. |
 | `IsEmpty`          | `Property` | `True` if empty, else `False`. |
 | `Clear`            | `Sub`      | Clears the stack and resets capacity to `InitialSize`. |
-| `Items([base])`    | `Function` | Copies items into `Variant()`; order is **top → bottom**; `arr(base)` = top. |
+| `Items([base])`    | `Function` | Copies items into `Variant()`; order is **top → bottom**; `arr(base)` = top; an empty stack returns an empty array (`0 To -1`). |
 | `For Each`         | Enumerator | Iterates **top → bottom** on a snapshot. (Mutation during iteration is safe but iterates the old snapshot.) |
 
 **Errors**  
@@ -70,19 +70,20 @@ while outperforming the `Collection`-based version in speed and memory use.
 
 | Count   | Array   | Collection |
 |:-------:|--------:|-----------:|
-| 10      | 0.00030 | 0.00053    |
-| 100     | 0.00030 | 0.00053    |
-| 1 000   | 0.00029 | 0.00052    |
-| 10 000  | 0.00028 | 0.00052    |
-| 100 000 | 0.00029 | 0.00052    |
+| 10      | 0.00029 | 0.00060    |
+| 100     | 0.00031 | 0.00061    |
+| 1 000   | 0.00032 | 0.00064    |
+| 10 000  | 0.00032 | 0.00063    |
+| 100 000 | 0.00032 | 0.00059    |
 
 ### Observations
 
-- The **array version** is roughly **40% faster** than the `Collection` version across all stack sizes.
+- The **array version** needs about **half the time** of the `Collection` version across all stack sizes.
 - It uses about **half the memory** per stored item on x64 systems (excluding the headspace buffer).
 - The **doubling growth strategy** (`GrowthFactor = 2`) keeps `ReDim Preserve` calls rare and amortized O(1).
-- **Shrink** fires only when occupancy drops below `ShrinkTrigger` (25%), preventing thrashing on alternating push/pop.
-- The **collection version** stays stable at very large sizes but pays a constant late-binding penalty internally.
+- **Shrink** fires only when occupancy drops below `ShrinkTrigger` (25%) and the array is larger than `InitialSize`, preventing thrashing on alternating push/pop.
+- **`For Each`** first copies all items to a snapshot `Collection`, which makes it about four times slower than in the `Collection` version.
+- The **collection version** is also constant-time at every size, see [vba-stack](https://github.com/vgrstn/VBA-Stack).
 
 ### Practical Guidance
 

@@ -41,34 +41,34 @@ Option Explicit
 
 ' Author: Vincent van Geerestein
 ' E-mail: vincent@vangeerestein.com
-' Description: Generic stack class
+' Description: Generic Stack Class
 ' Enumeration: For Each item in object
-' Version: 2025.10.17
+' Version: 2026.11.07
 '
 ' Methods
-' Clear             Clears the stack
+' Clear             Removes all items from the stack
 ' Push item         Adds an item at the top of the stack
 ' Pop               Returns and removes the item at the top of the stack
 ' Items([base])     Exports all stack items to an array
 '
-' Properties
-' Count             Returns the number of items in the stack
+' Properties (Get)
+' Count             Returns the number of items contained in the stack
 ' IsEmpty           Returns True if the stack is empty or False if not
 ' Peek              Returns the item at the top of the stack (default)
 '
 ' This generic Stack Class is implemented using an encapsulated VB Array.
 '
 ' Timings (ms) for one push + one pop.
-'     count      Array   Collection
-' 1      10    0.00030      0.00053
-' 2     100    0.00030      0.00053
-' 3    1000    0.00029      0.00052
-' 4   10000    0.00028      0.00052
-' 5  100000    0.00029      0.00052
+'     count        Array   Collection
+' 1      10      0.00029      0.00060
+' 2     100      0.00031      0.00061
+' 3    1000      0.00032      0.00064
+' 4   10000      0.00032      0.00063
+' 5  100000      0.00032      0.00059
 '
-' The performance of the Array version is about 40% faster than the Collection
-' version and it uses 50% less memory (for x64) per stored item, although extra
-' memory is needed for the headspace (InitialSize).
+' The Array version needs about half the time of the Collection version and
+' it uses 50% less memory (for x64) per stored item, although extra memory is
+' needed for the headspace (InitialSize).
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 ' Performance Notes
@@ -77,6 +77,8 @@ Option Explicit
 ' Array-based stack is faster and more memory-efficient than using a Collection.
 ' Shrink logic avoids fragmentation and excessive resizing.
 ' Enumeration is rarely used in stack workflows, but supported for completeness.
+' It first copies all items to a VB Collection, which makes For Each about four
+' times slower than for the Collection version.
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 ' Private declarations
@@ -98,12 +100,12 @@ Private Const GrowthFactor As Double = 2
 Private Const ShrinkTrigger As Double = 0.5 / GrowthFactor
 
 ' Wrapper for private data.
-Private Type TPRIVATE
+Private Type TPrivate
     Top As Long
     Stack() As Variant
     List As Collection
 End Type
-Private this As TPRIVATE
+Private this As TPrivate
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -200,11 +202,13 @@ Attribute Pop.VB_Description = "Returns and removes the item at the top of the s
 
     this.Top = this.Top - 1
 
-    ' Reclaim space.
-    If this.Top < ShrinkTrigger * UBound(this.Stack) Then
-        Dim newSize As Long: newSize = Int(UBound(this.Stack) / GrowthFactor)
-        If newSize < InitialSize Then newSize = InitialSize
-        ReDim Preserve this.Stack(1 To newSize)
+    ' Reclaim space, but never below the initial size.
+    If UBound(this.Stack) > InitialSize Then
+        If this.Top < ShrinkTrigger * UBound(this.Stack) Then
+            Dim newSize As Long: newSize = Int(UBound(this.Stack) / GrowthFactor)
+            If newSize < InitialSize Then newSize = InitialSize
+            ReDim Preserve this.Stack(1 To newSize)
+        End If
     End If
 
     Set this.List = Nothing
@@ -235,6 +239,12 @@ End Sub
 
 Public Function Items(Optional ByVal base As Long) As Variant()
 Attribute Items.VB_Description = "Exports all stack items to an array with most recently pushed item as first array element."
+' Returns an empty array (0 To -1) for an empty stack.
+
+    If this.Top = 0 Then
+        Items = VBA.Array()
+        Exit Function
+    End If
 
     Dim arr() As Variant: ReDim arr(base To base + this.Top - 1)
     Dim j As Long: j = base
